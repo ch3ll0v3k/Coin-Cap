@@ -187,13 +187,11 @@ class CoinCap(object):
 
                 self.db_cur.execute( _sql );
 
-                """
                 self.LOG(
                     "R:{:4} S:{:6} USD:{:14}|01-H:{:8} 24-H:{:8} 07-D:{:8}".format( 
-                        rank, ( symbol[0:5]+'*' if len(symbol) > 5 else symbol ), price_usd, change_1h, change_24h, change_7d )
-
+                        rank, ( symbol[0:5]+'*' if len(symbol) > 5 else symbol ), price_usd, change_1h, change_24h, change_7d ),
+                    "G"
                 );
-                """
 
                 self.db.commit();
                 self.db.close();
