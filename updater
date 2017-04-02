@@ -193,8 +193,8 @@ class CoinCap(object):
                 self.db.close();
 
         except Exception as _err:
-            self.db.commit();
-            self.db.close();
+            # self.db.commit();
+            # self.db.close();
             self.LOG( _err.message, 'E' );
 
     # -------------------------------------------------------------
