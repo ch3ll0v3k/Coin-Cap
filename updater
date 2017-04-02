@@ -1,0 +1,300 @@
+#!/usr/bin/python
+# -*- coding: utf-8 -*-
+
+ ######################################################################################
+import urllib2, time, sys, os, json
+from random import randint;
+# from BeautifulSoup import BeautifulSoup
+# from multiprocessing import Pool #, ThreadPool
+
+from time import sleep
+import sqlite3
+
+from CC import CC
+from SQLs import SQLs
+
+from datetime import datetime as DT
+
+######################################################################################
+class CoinCap(object):
+
+    # -------------------------------------------------------------
+    def __init__(self):
+
+        # ---------------------------
+        # CoinCap
+        self.LOG_TAG                                = 'CoinCap:';
+        self.upd_delay_sec                          = (30 * 60) / 2;
+        self.allow_process                          = False;
+
+        # ---------------------------
+        # DB
+        self.db                                     = None;
+        self.db_cur                                 = None;
+        self.db_path                                = './dbs/';
+        self.db_name                                = 'CoinCap.db';
+        self.db_raw_data                            = None;
+        self.db_raw_json                            = None;
+        self.db_main_tb                             = 'main_data';
+
+        # ---------------------------
+        # API
+        self.api                                    = 'https://api.coinmarketcap.com/v1/';
+        self.api_method                             = 'ticker';
+        self.api_limit                              = 0; # limit=10, 0 == UNLIMITED
+        self.api_link                               = '';
+        self.api_cvt_to                             = 'USD'
+        self.api_cvts                               = [ # convert=EUR
+            'AUD', 'BRL', 'CAD', 'CHF', 'CNY', 'EUR', 'GBP',
+            'HKD', 'IDR', 'INR', 'JPY', 'KRW', 'MXN', 'RUB'
+        ];
+
+    # -------------------------------------------------------------
+    def RUN(self):
+
+        SLP_DEL = 10;
+
+        while True:
+
+            try:
+
+                unix_start_t = self.UNIX( True ); 
+
+                if( self.get_data() ):
+                    self.process_new_data();
+
+                unix_rest_t = (self.UNIX( True ) - unix_start_t); 
+                self.LOG( ' SPEND TIME ON UPDATE-DB: ['+str( unix_rest_t )+'] SECS', 'W' );
+
+                unix_rest_t = self.upd_delay_sec - unix_rest_t; 
+
+                self.LOG( 'SLEEP: ['+str(self.upd_delay_sec)+'] SECS', 'I' );
+                rap = unix_rest_t / SLP_DEL;
+                _str = str(unix_rest_t);
+
+                for x in xrange( 0, rap ):
+                    self.LOG( ' LEFT: ['+str( unix_rest_t - (x*SLP_DEL) )+'] SECS', 'I' );
+                    sleep( SLP_DEL ); # 15 MIN
+
+            except Exception as _err:
+                self.LOG( 'MAIN-LOOP: '+str(_err.message), 'E' );
+
+    # -------------------------------------------------------------
+    def init_db(self, SYMBOL):
+
+        SYMBOL = SYMBOL.strip();
+        SYMBOL = SYMBOL.replace('@', 'at');
+        SYMBOL = SYMBOL.replace('#', 'hash');
+
+        SYMBOL = SYMBOL.replace('?', '');
+        SYMBOL = SYMBOL.replace('+', '');
+        SYMBOL = SYMBOL.replace(':', '');
+        SYMBOL = SYMBOL.replace('&', '');
+        SYMBOL = SYMBOL.replace('"', '');
+        SYMBOL = SYMBOL.replace("'", '');
+        SYMBOL = SYMBOL.replace("=", '');
+        SYMBOL = SYMBOL.replace(",", '');
+        SYMBOL = SYMBOL.replace(";", '');
+        SYMBOL = SYMBOL.replace("<", '');
+        SYMBOL = SYMBOL.replace(">", '');
+        SYMBOL = SYMBOL.replace("*", '');
+        SYMBOL = SYMBOL.replace("%", '');
+        SYMBOL = SYMBOL.replace("$", '');
+
+        if( SYMBOL == None or SYMBOL == '' or len(SYMBOL) < 1 ): 
+            self.LOG('RET: FALSE: ');
+            return False;
+
+        self.LOG( 'init_db: SYMBOL:['+SYMBOL+']', 'I' );
+
+        self.db_conf_str = self.db_path+SYMBOL+'.db';
+        self.LOG( 'init_db: ('+self.db_conf_str+')', 'I' );
+
+        self.db = sqlite3.connect( self.db_conf_str );
+        self.db_cur = self.db.cursor();
+
+        try:
+            self.LOG( 'TEST-DB:', 'I' );
+            self.db_cur.execute('select * from '+SYMBOL+' order by id limit 1 ');
+            tmp_t = self.db_cur.fetchone();
+
+        except Exception as _err:
+            self.LOG( '---------------------------------------------', 'W' );
+            self.LOG( 'TEST-DB: ERROR: TABLE: ['+SYMBOL+'] NOT-FOUND', 'W' );
+
+            if( _err.message == 'no such table: '+SYMBOL):
+                self.LOG( 'TEST-DB: CREATING NEW TABLE', 'G' );
+
+                # print SQLs.new_db.replace('[TB_NAME]', SYMBOL);
+
+                self.db_cur.execute( SQLs.new_db.replace('[TB_NAME]', SYMBOL) );
+                self.db.commit();
+
+            else:
+                self.LOG( 'TEST-DB: UNKOWN ERROR: ['+_err.message+']', 'E' );
+                return False;
+                self.exit();
+
+        return True;
+            
+    # -------------------------------------------------------------
+    def MKDT( self, inp ):
+        return inp if inp != None else '0';
+
+    # -------------------------------------------------------------
+    def process_new_data( self ):
+
+        TB_PR = '_';
+
+        try:
+
+            self.LOG( 'process_new_data:', 'I' );
+            _len = len(self.db_raw_json);
+
+            for i in xrange(0, _len):
+
+                self.LOG( 'PROCESSING SYMBOL: ['+self.db_raw_json[i]['symbol']+']', 'G');
+                if not self.init_db( TB_PR+self.db_raw_json[i]['symbol']):
+                    self.LOG( 'SYMBOL: ERROR', 'W');
+                    continue;
+
+                # print x; exit();
+
+                # _id        = self.db_raw_json[i]['id'];
+                name       = self.MKDT( self.db_raw_json[i]['name'] );
+                symbol     = self.MKDT( self.db_raw_json[i]['symbol'] );
+                rank       = self.MKDT( self.db_raw_json[i]['rank'] );
+                price_usd  = self.MKDT( self.db_raw_json[i]['price_usd'] );
+                price_btc  = self.MKDT( self.db_raw_json[i]['price_btc'] );
+                vol24h_usd = self.MKDT( self.db_raw_json[i]['24h_volume_usd'] );
+                cap_usd    = self.MKDT( self.db_raw_json[i]['market_cap_usd'] );
+                avail_supp = self.MKDT( self.db_raw_json[i]['available_supply'] );
+                total_supp = self.MKDT( self.db_raw_json[i]['total_supply'] );
+                change_1h  = self.MKDT( self.db_raw_json[i]['percent_change_1h'] );
+                change_24h = self.MKDT( self.db_raw_json[i]['percent_change_24h'] );
+                change_7d  = self.MKDT( self.db_raw_json[i]['percent_change_7d'] );
+                updated    = self.MKDT( self.db_raw_json[i]['last_updated'] );
+
+                _sql = 'INSERT INTO '+TB_PR+symbol;
+                _sql += ' (name, symbol, rank, price_usd, price_btc, vol24h_usd, cap_usd, avail_supp, total_supp, change_1h, change_24h, change_7d, updated)';
+                _sql += ' VALUES("'+name+'","'+symbol+'","'+rank+'","'+price_usd+'","'+price_btc+'","'+vol24h_usd+'","'+cap_usd+'","'+avail_supp+'","'+total_supp+'","'+change_1h+'","'+change_24h+'","'+change_7d+'","'+updated+'")';
+
+                self.db_cur.execute( _sql );
+
+                self.LOG(
+                    "R:{:4} S:{:6} USD:{:14}|01-H:{:8} 24-H:{:8} 07-D:{:8}".format( 
+                        rank, ( symbol[0:5]+'*' if len(symbol) > 5 else symbol ), price_usd, change_1h, change_24h, change_7d )
+
+                );
+                """
+                """
+
+                self.db.commit();
+                self.db.close();
+
+        except Exception as _err:
+            self.db.commit();
+            self.db.close();
+            self.LOG( _err.message, 'E' );
+
+    # -------------------------------------------------------------
+    def get_data(self, mk_json=True):
+
+        self.LOG( 'get_data:', 'I' );
+
+        try:
+            req = urllib2.Request( self.get_api_link() ); # (URL, DATA)
+            self.LOG( 'get_data: start-request', 'I' );
+            self.db_raw_data = urllib2.urlopen(req).read();
+
+            if( mk_json ):
+                self.LOG( 'get_data: mk_json', 'I' );
+                self.db_raw_json = json.loads(self.db_raw_data);
+
+            return True;
+
+        except Exception as _err:
+            self.LOG('E', _err);
+            return False;
+
+
+        # json.dumps( json.loads(RAW_RESPONSE), sort_keys=True, indent=4, separators=(',', ': '));
+
+
+    # -------------------------------------------------------------
+    def get_api_link( self, coin_name='' ):
+
+        self.LOG( 'get_api_link:', 'I' );
+        self.api_link = self.api;               # https://api.coinmarketcap.com/v1/
+        self.api_link += self.api_method+'/';   # ticker
+        if( coin_name != '' ):
+            self.api_link += coin_name+'/';     # bitcoin/?
+
+        self.api_link += '?';
+
+        if( self.api_cvt_to != '' ):
+            self.api_link += 'convert='+str(self.api_cvt_to)+'&'; # convert=USD
+
+        if( self.api_limit > 0 ):
+            self.api_link += 'limit='+str(self.api_limit)+'&'; # limit=10
+
+        return self.api_link;
+
+    # -------------------------------------------------------------
+    def LOG( self, data, type_t='I' ):
+
+        T = {
+            'I' : CC.B, 'W' : CC.Y, 'E' : CC.R,  'S' : CC.G, 'G' : CC.G, 
+        };
+
+        time_t = DT.now().strftime('%d-%m-%Y %H:%M:%S');
+        print( ' * ['+T[type_t]+(type_t*4)+CC.EN+']'+'['+CC.W+time_t+CC.EN+'] # ['+data+']' );
+
+    # -------------------------------------------------------------
+    def UNIX( self, type_t=False ):
+
+        if( type_t ):
+            return int(DT.now().strftime('%s'));
+        
+        return DT.now().strftime('%s');
+
+
+    # -------------------------------------------------------------
+    def exit(self):
+
+        self.LOG( ' # '+( '='*70 ) );
+        self.LOG( ' END ' );
+        self.db.close();
+        exit();
+
+    # -------------------------------------------------------------
+
+
+######################################################################################
+if __name__ == '__main__':
+
+    mCoinCap = CoinCap();
+    mCoinCap.RUN();
+
+    # mCoinCap.LOG( 'TEST', 'I' );
+
+    # while True:
+    #     mCoinCap.LOG( mCoinCap.UNIX(), 'I' );
+    #     sleep( 1 );
+    # mCoinCap.init_db('SYMBOL');
+
+exit();
+
+######################################################################################
+"""
+HEADERS = {
+    "User-Agent": "Mozilla/5.0 (Win-32; rv:24.0) Gecko/20140723 Firefox/24.0 Iceweasel/24.7.0",
+    "Accept": "text/html,application/xhtml+xml,application/xml;q=0.9,*/*;q=0.8",
+    "Accept-Language": "en-US,en;q=0.5",
+    "Referer": "http://from-here.com/",
+    "Connection": "keep-alive",
+    "Cache-Control": "max-age=0",
+    "Cookie": "chatRefresh=1; locale=ru;"
+
+}
+"""
