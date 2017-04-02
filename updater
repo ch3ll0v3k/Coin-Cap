@@ -82,25 +82,6 @@ class CoinCap(object):
     # -------------------------------------------------------------
     def init_db(self, SYMBOL):
 
-        SYMBOL = SYMBOL.strip();
-        SYMBOL = SYMBOL.replace('@', 'at');
-        SYMBOL = SYMBOL.replace('#', 'hash');
-
-        SYMBOL = SYMBOL.replace('?', '');
-        SYMBOL = SYMBOL.replace('+', '');
-        SYMBOL = SYMBOL.replace(':', '');
-        SYMBOL = SYMBOL.replace('&', '');
-        SYMBOL = SYMBOL.replace('"', '');
-        SYMBOL = SYMBOL.replace("'", '');
-        SYMBOL = SYMBOL.replace("=", '');
-        SYMBOL = SYMBOL.replace(",", '');
-        SYMBOL = SYMBOL.replace(";", '');
-        SYMBOL = SYMBOL.replace("<", '');
-        SYMBOL = SYMBOL.replace(">", '');
-        SYMBOL = SYMBOL.replace("*", '');
-        SYMBOL = SYMBOL.replace("%", '');
-        SYMBOL = SYMBOL.replace("$", '');
-
         if( SYMBOL == None or SYMBOL == '' or len(SYMBOL) < 1 ): 
             self.LOG('RET: FALSE: ');
             return False;
@@ -142,19 +123,44 @@ class CoinCap(object):
         return inp if inp != None else '0';
 
     # -------------------------------------------------------------
+    def CLEAR_SYMBOL( self, symbol ):
+
+        symbol = symbol.strip();
+        symbol = symbol.replace('@', 'at');
+        symbol = symbol.replace('#', 'hash');
+
+        symbol = symbol.replace('?', '');
+        symbol = symbol.replace('+', '');
+        symbol = symbol.replace(':', '');
+        symbol = symbol.replace('"', '');
+        symbol = symbol.replace("'", '');
+        symbol = symbol.replace("=", '');
+        symbol = symbol.replace(",", '');
+        symbol = symbol.replace(";", '');
+        symbol = symbol.replace("<", '');
+        symbol = symbol.replace(">", '');
+        symbol = symbol.replace("*", '');
+        symbol = symbol.replace("%", '');
+        symbol = symbol.replace("$", '');
+
+        return symbol;
+
+    # -------------------------------------------------------------
     def process_new_data( self ):
 
         TB_PR = '_';
 
         try:
 
-            self.LOG( 'process_new_data:', 'I' );
+            # self.LOG( 'process_new_data:', 'I' );
             _len = len(self.db_raw_json);
 
             for i in xrange(0, _len):
 
-                self.LOG( 'PROCESSING SYMBOL: ['+self.db_raw_json[i]['symbol']+']', 'G');
-                if not self.init_db( TB_PR+self.db_raw_json[i]['symbol']):
+                SYMBOL = self.CLEAR_SYMBOL( self.db_raw_json[i]['symbol'] );
+
+                # self.LOG( 'PROCESSING SYMBOL: ['+SYMBOL+']', 'G');
+                if not self.init_db( TB_PR+SYMBOL):
                     self.LOG( 'SYMBOL: ERROR', 'W');
                     continue;
 
@@ -162,7 +168,7 @@ class CoinCap(object):
 
                 # _id        = self.db_raw_json[i]['id'];
                 name       = self.MKDT( self.db_raw_json[i]['name'] );
-                symbol     = self.MKDT( self.db_raw_json[i]['symbol'] );
+                symbol     = self.MKDT( SYMBOL );
                 rank       = self.MKDT( self.db_raw_json[i]['rank'] );
                 price_usd  = self.MKDT( self.db_raw_json[i]['price_usd'] );
                 price_btc  = self.MKDT( self.db_raw_json[i]['price_btc'] );
@@ -181,12 +187,12 @@ class CoinCap(object):
 
                 self.db_cur.execute( _sql );
 
+                """
                 self.LOG(
                     "R:{:4} S:{:6} USD:{:14}|01-H:{:8} 24-H:{:8} 07-D:{:8}".format( 
                         rank, ( symbol[0:5]+'*' if len(symbol) > 5 else symbol ), price_usd, change_1h, change_24h, change_7d )
 
                 );
-                """
                 """
 
                 self.db.commit();
